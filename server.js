@@ -7,6 +7,9 @@ const fs = require('fs').promises;
 const pdf = require('pdf-parse');
 require('dotenv').config();
 
+console.log('All environment variables:', process.env);
+console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? 'Present' : 'Missing');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -46,7 +49,11 @@ const upload = multer({
     }
 });
 
-app.use(cors());
+app.use(cors({
+    origin: ['https://yash8190.github.io', 'http://localhost:3000'],
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -55,6 +62,8 @@ app.post('/generate-document', async (req, res) => {
     try {
         const { documentType, details } = req.body;
         
+        console.log('Received request:', { documentType, details }); // Debug log
+
         if (!documentType || !details) {
             return res.status(400).json({ 
                 error: 'Document type and details are required' 
@@ -62,6 +71,8 @@ app.post('/generate-document', async (req, res) => {
         }
 
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+        console.log('Making request to Gemini...'); // Debug log
 
         const prompt = `
             Generate a professional ${documentType} following Indian legal standards.
@@ -77,17 +88,29 @@ app.post('/generate-document', async (req, res) => {
             5. Include jurisdiction under Indian courts
         `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        try {
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
 
-        res.json({ document: text });
+            console.log('Received response from Gemini'); // Debug log
+
+            res.json({ 
+                success: true,
+                document: text 
+            });
+
+        } catch (geminiError) {
+            console.error('Gemini API Error:', geminiError);
+            throw new Error(`Gemini API Error: ${geminiError.message}`);
+        }
 
     } catch (error) {
         console.error('Document generation error:', error);
         res.status(500).json({ 
             error: 'Failed to generate document',
-            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            details: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });
